@@ -1,0 +1,267 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <cstdio>
+#include <random>
+#include <ctime>
+#include <vector>
+#include <iomanip>
+
+using namespace std;
+
+mt19937 generator(time(0));
+uniform_real_distribution<float> distribution(0, 1);
+
+
+void build_array(int** tab, int size, float p)
+{
+    for (int i = 0; i < size; i++)
+    {
+        for (int j = 0; j < size; j++)
+        {
+            float r = distribution(generator);
+            if (r < p) tab[i][j] = 1;
+            else tab[i][j] = 0;
+        }
+    }
+}
+
+double* ini_parameters()
+{
+    double  ini_parameters[5];
+    fstream ini;
+    string line;
+    ini.open("perc_ini.txt", ios::in);
+    if (ini.good() == 0)
+    {
+        cout << "Blad pliku." << endl;
+        return 0;
+    }
+
+    int i = 0;
+    do
+    {
+        ini >> ini_parameters[i];
+        i++;
+    } while (getline(ini, line) && i <= 4);
+
+    return ini_parameters;
+}
+
+int burning_method(int** A, int L)
+{
+    for (int i = 0; i < L; i++)
+    {
+        if (A[0][i] == 1)   A[0][i] = 2;
+    }
+
+    int t = 2;
+    bool burn = 1;
+    while (burn == 1)
+    {
+        burn = 0;
+        for (int i = 0; i < L; i++)
+        {
+            for (int j = 0; j < L; j++)
+            {
+                if (A[i][j] == t)
+                {
+                    if (i > 0 && A[i - 1][j] == 1)
+                    {
+                        A[i - 1][j] = t + 1;
+                        burn = 1;
+                    }
+                    if (i < L - 1 && A[i + 1][j] == 1)
+                    {
+                        A[i + 1][j] = t + 1;
+                        burn = 1;
+                    }
+                    if (j < L - 1 && A[i][j + 1] == 1)
+                    {
+                        A[i][j + 1] = t + 1;
+                        burn = 1;
+                    }
+                    if (j > 0 && A[i][j - 1] == 1)
+                    {
+                        A[i][j - 1] = t + 1;
+                        burn = 1;
+                    }
+                }
+            }
+
+            if (i == L - 1)
+            {
+                for (int j = 0; j < L; j++)
+                {
+                    if (A[i][j] > 1)
+                    {
+                        return A[i][j] - 1;
+                    }
+                }
+            }
+        }
+        t++;
+    }
+    return 0;
+}
+
+vector<int> Hoshen_Kopelman(int** A, int L)
+{
+    int m = 2;
+    vector<int> M(m,0);
+
+    for (int i = 0; i < L; i++)
+    {
+        for (int j = 0; j < L; j++)
+        {
+            if (A[i][j] == 1)
+            {
+                if (i > 0 && A[i - 1][j] > 1 && j > 0 && A[i][j - 1] > 1)
+                {
+                    if (A[i - 1][j] == A[i][j - 1])
+                    {
+                        A[i][j] = A[i - 1][j];
+                        M[A[i][j]]++;
+                    }
+                    else
+                    {
+                        if (A[i - 1][j] < A[i][j - 1]) 
+                        {
+                            A[i][j] = A[i - 1][j];
+                            M[A[i][j]] += M[A[i][j - 1]] + 1;
+                            M[A[i][j - 1]] = 0;
+                        }
+                        else
+                        {
+                            A[i][j] = A[i][j - 1];
+                            M[A[i][j]] += M[A[i - 1][j]] + 1;
+                            M[A[i - 1][j]] = 0;
+                        }
+                    }
+                }
+                else if (i > 0 && A[i - 1][j] > 1)
+                {
+                    A[i][j] = A[i - 1][j];
+                    M[A[i][j]]++;
+                }
+                else if (j > 0 && A[i][j - 1] > 1)
+                {
+                    A[i][j] = A[i][j - 1];
+                    M[A[i][j]]++;
+                }
+                else
+                {
+                    A[i][j] = m;
+                    M.push_back(1);
+                    m++;
+                }
+            }
+        }
+    }
+    return M;
+}
+
+void reset_matrix(int** A, int L)
+{
+    for (int i = 0; i < L; i++)
+    {
+        for (int j = 0; j < L; j++)
+        {
+            if (A[i][j] > 0)    A[i][j] = 1;
+        }
+    }
+}
+
+
+int main()
+{   
+    double* parameters = ini_parameters(); // import parametrów
+    int L = parameters[0], T = parameters[1];
+    double p0 = parameters[2], pk = parameters[3], dp = parameters[4];
+
+    if (parameters == 0) return 0;
+
+    fstream save;
+    save.open("results.txt", ios::out);
+
+
+    for (double p = p0; p <= pk; p = p + dp) // pętla po prawdopodobieństwie
+    {
+        double avg_path = 0;
+        double prob_path = 0;
+        double avg_max_cluster = 0;
+        double avg_cluster = 0;
+        vector<double> Distribution(L * L + 1,0);
+        fstream save_dist;
+
+        //save_dist.open("Dist_p" + to_string(p) + " L" + to_string(L) + " T" + to_string(T) + ".txt", ios::out);
+        
+        for (int k = 0; k < T; k++) // próby monte carlo
+        {
+            int** A = new int* [L];     // dynamiczna tablica, trzeba zwolnic pamiec!!!
+            for (int i = 0; i < L; i++)
+            {
+                A[i] = new int[L];
+            }
+
+            build_array(A, L, p);   // zapełnianie nowej tablicy
+
+           double temp_path = burning_method(A, L);   // zwraca najkrótszą ścieżkę
+           avg_path += temp_path;
+           if (temp_path > 0)  prob_path += 1.0;
+
+            reset_matrix(A, L); // przywraca pierwotny stan tablicy losowej
+
+            vector<int> Cluster = Hoshen_Kopelman(A, L);    //zwraca wektor M - tablica zawierajaca rozmiary poszczególnych klastrów
+            
+
+            for (int i = 1; i < Cluster.size(); i++)    // ilość klastrów w danym rozmiarze
+            {
+                if(Cluster[i]>0) Distribution[Cluster[i]] += 1.0;
+            }
+
+            int num = 0;
+            int max = 0;
+            int avg = 0;
+            for (int i = 1; i < Distribution.size(); i++)
+            {
+                if (Distribution[i] > 0)
+                {
+                    avg += Distribution[i] * i;
+                    num += Distribution[i];
+                }
+                if (Distribution[i] > 0 && i > max)     max = i;
+            }
+
+            if(num>0)   avg_cluster += (avg / num);
+            avg_max_cluster += max;
+
+
+            for (int i = 0; i < L; i++) 
+            {
+                delete[] A[i];
+            }
+            delete[] A;
+        }
+
+        // zapis wyników
+        save << fixed << setprecision(5);
+        save << p  << "  " << prob_path/T << "  " << avg_path/T << "  " << avg_max_cluster/T << "  " << avg_cluster/T << endl;
+
+        
+        save_dist << fixed << setprecision(5);
+        
+            for (int i = 1; i < Distribution.size(); i++)
+            {
+                if (Distribution[i] >= 0)
+                {
+                    save_dist << i << "  " << Distribution[i] / T << endl;
+                }
+            }
+
+            save_dist.close(); 
+    }
+
+    save.close();
+    return 0;
+}
